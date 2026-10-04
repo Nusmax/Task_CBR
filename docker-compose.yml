@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cbr
+      POSTGRES_PASSWORD: cbr
+      POSTGRES_DB: cbr
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbr -d cbr"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  migration:
+    build:
+      context: .
+      dockerfile: ./src/MigrationService/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cbr;Username=cbr;Password=cbr"
+    restart: "no"
+
+  updater:
+    build:
+      context: .
+      dockerfile: ./src/Currency.Updater/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cbr;Username=cbr;Password=cbr"
+
+  user-api:
+    build:
+      context: .
+      dockerfile: ./src/UserService/User.Api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cbr;Username=cbr;Password=cbr"
+      Jwt__Secret: "kX9#mP2!vF77qL5*zN1@wB8&jR4%tY6("
+      Jwt__Issuer: "TestCbr"
+      Jwt__Audience: "TestCbr"
+
+  finance-api:
+    build:
+      context: .
+      dockerfile: ./src/FinanceService/Finance.Api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cbr;Username=cbr;Password=cbr"
+      Jwt__Secret: "kX9#mP2!vF77qL5*zN1@wB8&jR4%tY6("
+      Jwt__Issuer: "TestCbr"
+      Jwt__Audience: "TestCbr"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: ./src/ApiGateway/Dockerfile
+    depends_on:
+      - user-api
+      - finance-api
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
